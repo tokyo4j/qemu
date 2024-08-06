@@ -1305,6 +1305,7 @@ static void riscv_tr_tb_stop(DisasContextBase *dcbase, CPUState *cpu)
     }
 }
 
+#if 0
 static void riscv_tr_disas_log(const DisasContextBase *dcbase,
                                CPUState *cpu, FILE *logfile)
 {
@@ -1320,6 +1321,7 @@ static void riscv_tr_disas_log(const DisasContextBase *dcbase,
 #endif
     target_disas(logfile, cpu, dcbase->pc_first, dcbase->tb->size);
 }
+#endif
 
 static const TranslatorOps riscv_tr_ops = {
     .init_disas_context = riscv_tr_init_disas_context,
