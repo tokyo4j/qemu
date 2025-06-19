@@ -1428,6 +1428,37 @@ static RISCVException read_hpmcounterh(CPURISCVState *env, int csrno,
     return riscv_pmu_read_ctr(env, val, true, ctr_index);
 }
 
+static RISCVException read_mpsec(CPURISCVState *env, int csrno,
+                               target_ulong *val)
+{
+    *val = 0;
+    if (env->pse_enabled) {
+        *val |= 1;
+    }
+    return RISCV_EXCP_NONE;
+}
+
+static RISCVException write_mpsec(CPURISCVState *env, int csrno,
+                                         target_ulong val, uintptr_t ra)
+{
+    env->pse_enabled = val & 1;
+    env->pse_accepted = val & 2;
+    return RISCV_EXCP_NONE;
+}
+
+static RISCVException read_mpsepa(CPURISCVState *env, int csrno,
+                               target_ulong *val)
+{
+    *val = env->mpsepa;
+    return RISCV_EXCP_NONE;
+}
+
+static RISCVException write_mpsepa(CPURISCVState *env, int csrno,
+                                         target_ulong val, uintptr_t ra)
+{
+    return RISCV_EXCP_NONE;
+}
+
 static int rmw_cd_mhpmcounter(CPURISCVState *env, int ctr_idx,
                               target_ulong *val, target_ulong new_val,
                               target_ulong wr_mask)
@@ -6485,6 +6516,8 @@ riscv_csr_operations csr_ops[CSR_TABLE_SIZE] = {
                              write_mhpmcounterh                         },
     [CSR_MHPMCOUNTER31H] = { "mhpmcounter31h", mctr32,  read_hpmcounterh,
                              write_mhpmcounterh                         },
+    [CSR_MPSEC]  = {  "mpsec",  any,  read_mpsec,  write_mpsec },
+    [CSR_MPSEPA] = {  "mpsepa", any, read_mpsepa, write_mpsepa },
     [CSR_SCOUNTOVF]      = { "scountovf", sscofpmf,  read_scountovf,
                              .min_priv_ver = PRIV_VERSION_1_12_0 },
 

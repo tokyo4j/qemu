@@ -310,6 +310,10 @@ struct CPUArchState {
     target_ulong mcause;
     target_ulong mtval;  /* since: priv-1.10.0 */
 
+    target_ulong pse_enabled;
+    target_ulong pse_accepted;
+    target_ulong mpsepa; /* page-success exception physical address */
+
     uint64_t mctrctl;
     uint32_t sctrdepth;
     uint32_t sctrstatus;

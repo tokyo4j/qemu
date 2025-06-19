@@ -1624,6 +1624,8 @@ static void raise_mmu_exception(CPURISCVState *env, target_ulong address,
     case MMU_INST_FETCH:
         if (pmp_violation) {
             cs->exception_index = RISCV_EXCP_INST_ACCESS_FAULT;
+        } else if (env->pse_enabled) {
+            cs->exception_index = RISCV_EXCP_INST_SUCCESS;
         } else if (env->virt_enabled && !first_stage) {
             cs->exception_index = RISCV_EXCP_INST_GUEST_PAGE_FAULT;
         } else {
@@ -1633,6 +1635,8 @@ static void raise_mmu_exception(CPURISCVState *env, target_ulong address,
     case MMU_DATA_LOAD:
         if (pmp_violation) {
             cs->exception_index = RISCV_EXCP_LOAD_ACCESS_FAULT;
+        } else if (env->pse_enabled) {
+            cs->exception_index = RISCV_EXCP_LOAD_SUCCESS;
         } else if (two_stage && !first_stage) {
             cs->exception_index = RISCV_EXCP_LOAD_GUEST_ACCESS_FAULT;
         } else {
@@ -1642,6 +1646,8 @@ static void raise_mmu_exception(CPURISCVState *env, target_ulong address,
     case MMU_DATA_STORE:
         if (pmp_violation) {
             cs->exception_index = RISCV_EXCP_STORE_AMO_ACCESS_FAULT;
+        } else if (env->pse_enabled) {
+            cs->exception_index = RISCV_EXCP_STORE_SUCCESS;
         } else if (two_stage && !first_stage) {
             cs->exception_index = RISCV_EXCP_STORE_GUEST_AMO_ACCESS_FAULT;
         } else {
@@ -1871,7 +1877,7 @@ bool riscv_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
         pmp_violation = true;
     }
 
-    if (ret == TRANSLATE_SUCCESS) {
+    if (ret == TRANSLATE_SUCCESS && !env->pse_enabled) {
         tlb_set_page(cs, address & ~(tlb_size - 1), pa & ~(tlb_size - 1),
                      prot, mmu_idx, tlb_size);
         return true;
@@ -1898,6 +1904,9 @@ bool riscv_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
         raise_mmu_exception(env, address, access_type, pmp_violation,
                             first_stage_error, two_stage_lookup,
                             two_stage_indirect_error);
+        if (env->pse_enabled) {
+            env->mpsepa = pa;
+        }
         cpu_loop_exit_restore(cs, retaddr);
     }
 
@@ -2254,6 +2263,10 @@ void riscv_cpu_do_interrupt(CPUState *cs)
         case RISCV_EXCP_SW_CHECK:
             tval = env->sw_check_code;
             break;
+        case RISCV_EXCP_INST_SUCCESS:
+        case RISCV_EXCP_LOAD_SUCCESS:
+        case RISCV_EXCP_STORE_SUCCESS:
+            tval = env->badaddr;
         default:
             break;
         }
@@ -2282,7 +2295,7 @@ void riscv_cpu_do_interrupt(CPUState *cs)
                   __func__, env->mhartid, async, cause, env->pc, tval,
                   riscv_cpu_get_trap_name(cause, async));
 
-    mode = env->priv <= PRV_S && cause < 64 &&
+    mode = env->priv <= PRV_S && cause < 64 && !env->pse_enabled &&
         (((deleg >> cause) & 1) || s_injected || vs_injected) ? PRV_S : PRV_M;
 
     vsmode_exc = env->virt_enabled && cause < 64 &&

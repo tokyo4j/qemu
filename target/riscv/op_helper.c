@@ -435,6 +435,9 @@ target_ulong helper_mret(CPURISCVState *env)
                             PRV_M, false);
     }
 
+    // CPUState *cs = env_cpu(env);
+    fprintf(stderr, "Filling va=%lx, pa=%lx\n", env->mtval, env->mpsepa);
+
     return retpc;
 }
 
