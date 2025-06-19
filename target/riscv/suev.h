@@ -32,7 +32,7 @@ union rmpe_attr {
 
 struct rmpe {
   union rmpe_attr attr;
-  uint64_t gen;
+  uint64_t vmuid;
 };
 
 #ifdef NEED_CPU_H // when included from QEMU
@@ -41,7 +41,7 @@ struct rmpe {
 #define RMPE_ADDR(env, spa) ((env)->hrmpbase+(spa)/4096*sizeof(struct rmpe))
 
 struct guest_ctx {
-    uint64_t gen;
+    uint64_t vmuid;
     enum {
         GUEST_STATE_INIT,
         GUEST_STATE_CREATED,
@@ -49,8 +49,8 @@ struct guest_ctx {
     } state;
 };
 
-extern struct guest_ctx suev_vms[SUEV_ASID_END];
-extern uint64_t suev_last_gen;
+extern struct guest_ctx ctx_table[SUEV_ASID_END];
+extern uint64_t suev_last_vmuid;
 
 #endif
 

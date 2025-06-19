@@ -19,10 +19,27 @@
         } \
     } while(0)
 
-struct guest_ctx suev_vms[SUEV_ASID_END];
-uint64_t suev_last_gen = 10;
+struct guest_ctx ctx_table[SUEV_ASID_END];
+uint64_t suev_last_vmuid = 10;
 
 static const char empty_page[4096];
+
+static bool should_clear_page(struct rmpe *prev_rmpe, struct rmpe *new_rmpe)
+{
+    if (new_rmpe->attr.type == RMPE_LEAF) {
+        return true;
+    } else if (prev_rmpe->attr.type == RMPE_SHARED || prev_rmpe->attr.type == RMPE_LEAF) {
+        return false;
+    } else if (new_rmpe->attr.type == RMPE_SHARED) {
+        return true;
+    } else if (prev_rmpe->attr.type == RMPE_MERGEABLE && prev_rmpe->attr.fixed) {
+        return true;
+    } else if (prev_rmpe->vmuid != new_rmpe->vmuid) {
+        return true;
+    } else {
+        return false;
+    }
+}
 
 void helper_rmpupdate(CPURISCVState *env, target_ulong spa, target_ulong rmpe_attr)
 {
@@ -35,7 +52,7 @@ void helper_rmpupdate(CPURISCVState *env, target_ulong spa, target_ulong rmpe_at
                 !(spa & 4095UL) &&
                 spa < RMP_COVERED_END(env) &&
                 !(input_attr.bits & ~(
-                    /* These fields are only allowed as input */
+                    /* Only these fields are only allowed as inputs */
                     RMPE_TYPE_MASK |
                     RMPE_ASID_MASK |
                     RMPE_GPN_MASK
@@ -49,19 +66,13 @@ void helper_rmpupdate(CPURISCVState *env, target_ulong spa, target_ulong rmpe_at
     struct rmpe rmpe;
     cpu_physical_memory_read(RMPE_ADDR(env, spa), &rmpe, sizeof(rmpe));
 
-    if (suev_vms[input_attr.asid].gen != rmpe.gen
-            || (rmpe.attr.type != RMPE_SHARED
-                && input_attr.type == RMPE_SHARED)) {
-        cpu_physical_memory_write(spa, empty_page, 4096);
-    }
-
-    bool set_gen;
+    bool set_vmuid;
     if (input_attr.type == RMPE_PRIVATE || input_attr.type == RMPE_MERGEABLE) {
-        set_gen = true;
+        set_vmuid = true;
     } else {
-        set_gen = false;
+        set_vmuid = false;
     }
-    rmpe = (struct rmpe) {
+    struct rmpe new_rmpe = {
         .attr = {
             .validated = 0,
             .fixed = 0,
@@ -69,9 +80,13 @@ void helper_rmpupdate(CPURISCVState *env, target_ulong spa, target_ulong rmpe_at
             .asid = input_attr.asid,
             .gpn = input_attr.gpn,
         },
-        .gen = set_gen ? suev_vms[input_attr.asid].gen : 0,
+        .vmuid = set_vmuid ? ctx_table[input_attr.asid].vmuid : 0,
     };
-    cpu_physical_memory_write(RMPE_ADDR(env, spa), &rmpe, sizeof(rmpe));
+    if (should_clear_page(&rmpe, &new_rmpe)) {
+        cpu_physical_memory_write(spa, empty_page, 4096);
+    }
+
+    cpu_physical_memory_write(RMPE_ADDR(env, spa), &new_rmpe, sizeof(rmpe));
 
     tlb_flush(env_cpu(env));
 #endif
@@ -83,9 +98,9 @@ void helper_vmcreate(CPURISCVState *env, target_ulong asid) {
                 !env->virt_enabled &&
                 env->hrmplen &&
                 asid < SUEV_ASID_END &&
-                suev_vms[asid].state == GUEST_STATE_INIT);
-    suev_vms[asid].gen = ++suev_last_gen;
-    suev_vms[asid].state = GUEST_STATE_CREATED;
+                ctx_table[asid].state == GUEST_STATE_INIT);
+    ctx_table[asid].vmuid = ++suev_last_vmuid;
+    ctx_table[asid].state = GUEST_STATE_CREATED;
 #endif
 }
 
@@ -95,8 +110,8 @@ void helper_vmactivate(CPURISCVState *env, target_ulong asid) {
                 !env->virt_enabled &&
                 env->hrmplen &&
                 asid < SUEV_ASID_END &&
-                suev_vms[asid].state == GUEST_STATE_CREATED);
-    suev_vms[asid].state = GUEST_STATE_ACTIVATED;
+                ctx_table[asid].state == GUEST_STATE_CREATED);
+    ctx_table[asid].state = GUEST_STATE_ACTIVATED;
 #endif
 }
 
@@ -106,8 +121,8 @@ void helper_vmdestroy(CPURISCVState *env, target_ulong asid) {
                 !env->virt_enabled &&
                 env->hrmplen &&
                 asid < SUEV_ASID_END &&
-                suev_vms[asid].state == GUEST_STATE_ACTIVATED);
-    suev_vms[asid].state = GUEST_STATE_INIT;
+                ctx_table[asid].state == GUEST_STATE_ACTIVATED);
+    ctx_table[asid].state = GUEST_STATE_INIT;
 #endif
 }
 
@@ -125,8 +140,9 @@ void helper_vmupdatedata(CPURISCVState *env, target_ulong dest_paddr,
     while (true) {
         struct rmpe dest_rmpe;
         cpu_physical_memory_read(RMPE_ADDR(env, dest_paddr), &dest_rmpe, sizeof(dest_rmpe));
-        SUEV_ASSERT(suev_vms[dest_rmpe.attr.asid].state == GUEST_STATE_CREATED &&
-                    suev_vms[dest_rmpe.attr.asid].gen == dest_rmpe.gen);
+        SUEV_ASSERT(ctx_table[dest_rmpe.attr.asid].state == GUEST_STATE_CREATED &&
+                    ctx_table[dest_rmpe.attr.asid].vmuid == dest_rmpe.vmuid);
+        // TODO: second check might not be needed
 
         char buf[4096];
         // TODO: handle invalid memory R/W
@@ -184,7 +200,7 @@ void helper_pvalidate(CPURISCVState *env, target_ulong rmpe_attr) {
                    !rmpe.attr.fixed &&
                    rmpe.attr.type == input_attr.type &&
                    (rmpe.attr.gpn << 12) == gpa &&
-                   rmpe.gen == suev_vms[asid].gen);
+                   rmpe.vmuid == ctx_table[asid].vmuid);
     // TODO allow fixed
     rmpe.attr.validated = !rmpe.attr.validated;
     cpu_physical_memory_write(RMPE_ADDR(env, hpa), &rmpe, sizeof(rmpe));
@@ -219,7 +235,7 @@ void helper_pfix(CPURISCVState *env, target_ulong hpa, target_ulong leaf_hpa) {
             .validated = 1,
             .gpn = rmpe.attr.gpn,
         },
-        .gen = rmpe.gen,
+        .vmuid = rmpe.vmuid,
     };
 
     uint64_t rmple_addr = leaf_hpa + rmpe.attr.asid * sizeof(struct rmpe);
@@ -232,10 +248,10 @@ void helper_pfix(CPURISCVState *env, target_ulong hpa, target_ulong leaf_hpa) {
             .asid = 0,
             .gpn = leaf_hpa >> 12,
         },
-        .gen = 0,
+        .vmuid = 0,
     };
 
-    cpu_physical_memory_write(leaf_hpa, empty_page, 4096);
+    cpu_physical_memory_write(leaf_hpa, empty_page, 4096); // Maybe not needed
     cpu_physical_memory_write(rmple_addr, &rmple, sizeof(rmple));
     cpu_physical_memory_write(RMPE_ADDR(env, hpa), &rmpe, sizeof(rmpe));
 
@@ -270,10 +286,12 @@ void helper_punfix(CPURISCVState *env, target_ulong hpa, target_ulong asid) {
             .asid = asid,
             .gpn = rmple.attr.gpn,
         },
-        .gen = rmple.gen,
+        .vmuid = rmple.vmuid,
     };
 
     cpu_physical_memory_write(RMPE_ADDR(env, hpa), &rmpe, sizeof(rmpe));
+    cpu_physical_memory_write(RMPE_ADDR(env, rmple_addr & ~4095UL),
+                                &(struct rmpe){0}, sizeof(struct rmpe));
 
     tlb_flush(env_cpu(env));
 
@@ -317,7 +335,7 @@ void helper_pmerge(CPURISCVState *env, target_ulong dst_hpa,
             /* Validated means Present here */
             .validated = 1,
         },
-        .gen = src_rmpe.gen,
+        .vmuid = src_rmpe.vmuid,
     };
 
     /* dst_rmpe.attr.gpn is pointer to RMP leaf */
@@ -368,7 +386,7 @@ void helper_punmerge(CPURISCVState *env, target_ulong dst_hpa,
             .asid = asid,
             .gpn = rmple.attr.gpn,
         },
-        .gen = rmple.gen,
+        .vmuid = rmple.vmuid,
     };
     rmple = (struct rmpe){0};
 

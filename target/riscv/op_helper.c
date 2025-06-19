@@ -289,7 +289,7 @@ target_ulong helper_sret(CPURISCVState *env)
         /* On running confidential VMs, the guest must be in ACTIVATRED state.
          * TODO: 32 bit system */
         uint64_t asid = get_field(env->hgatp, SATP64_ASID);
-        if (suev_vms[asid].state != GUEST_STATE_ACTIVATED) {
+        if (ctx_table[asid].state != GUEST_STATE_ACTIVATED) {
             riscv_raise_exception(env, RISCV_EXCP_ILLEGAL_INST, GETPC());
         }
     }

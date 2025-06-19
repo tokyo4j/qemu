@@ -788,7 +788,7 @@ static int get_physical_address_rmp(CPURISCVState *env, int *prot, hwaddr hpa,
         if ((rmple.attr.gpn << 12) != gpa) {
             return TRANSLATE_FAIL;
         }
-        if (suev_vms[asid].gen != rmple.gen) {
+        if (ctx_table[asid].vmuid != rmple.vmuid) {
             return TRANSLATE_FAIL;
         }
         *prot = PAGE_READ | PAGE_EXEC;
@@ -800,7 +800,7 @@ static int get_physical_address_rmp(CPURISCVState *env, int *prot, hwaddr hpa,
         if ((rmpe.attr.gpn << 12) != gpa) {
             return TRANSLATE_FAIL;
         }
-        if (suev_vms[asid].gen != rmpe.gen) {
+        if (ctx_table[asid].vmuid != rmpe.vmuid) {
             return TRANSLATE_FAIL;
         }
         *prot = PAGE_READ | PAGE_WRITE | PAGE_EXEC;
