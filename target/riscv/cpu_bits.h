@@ -539,6 +539,13 @@
 #define CSR_MHPMCOUNTER30H  0xb9e
 #define CSR_MHPMCOUNTER31H  0xb9f
 
+#define CSR_MPSEC 0xbc0 /* page-success exception control */
+#define CSR_MPSEC_ENABLE 1
+#define CSR_MPSEC_DISABLE 2
+#define CSR_MPSEC_ACCEPT 4
+#define CSR_MPSEC_REJECT 8
+#define CSR_MPSEPA 0xbc1 /* page-success exception physical address */
+
 #define CSR_SCOUNTOVF       0xda0
 
 /* Crypto Extension */
@@ -721,6 +728,9 @@ typedef enum RISCVException {
     RISCV_EXCP_LOAD_GUEST_ACCESS_FAULT = 0x15,
     RISCV_EXCP_VIRT_INSTRUCTION_FAULT = 0x16,
     RISCV_EXCP_STORE_GUEST_AMO_ACCESS_FAULT = 0x17,
+    RISCV_EXCP_INST_SUCCESS = 0x18,
+    RISCV_EXCP_LOAD_SUCCESS = 0x19,
+    RISCV_EXCP_STORE_SUCCESS = 0x1a,
     RISCV_EXCP_SEMIHOST = 0x3f,
 } RISCVException;
 

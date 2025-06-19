@@ -310,6 +310,20 @@ struct CPUArchState {
     target_ulong mcause;
     target_ulong mtval;  /* since: priv-1.10.0 */
 
+    struct cpu_pse_state {
+        int mmu_idx;
+        int prot;
+        int tlb_size;
+        bool pending;
+        /* accessed as mpsec */
+        bool enabled;
+        bool accepted;
+        /* available as mtval when exited to M-mode */
+        target_ulong va;
+        /* accessed as mpsepa */
+        target_ulong pa;
+    } pse;
+
     uint64_t mctrctl;
     uint32_t sctrdepth;
     uint32_t sctrstatus;

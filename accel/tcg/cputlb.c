@@ -54,8 +54,8 @@
 
 
 /* DEBUG defines, enable DEBUG_TLB_LOG to log to the CPU_LOG_MMU target */
-/* #define DEBUG_TLB */
-/* #define DEBUG_TLB_LOG */
+#define DEBUG_TLB
+#define DEBUG_TLB_LOG
 
 #ifdef DEBUG_TLB
 # define DEBUG_TLB_GATE 1
@@ -79,7 +79,7 @@
 } while (0)
 
 #define assert_cpu_is_self(cpu) do {                              \
-        if (DEBUG_TLB_GATE) {                                     \
+        if (0) {                                     \
             g_assert(!(cpu)->created || qemu_cpu_is_self(cpu));   \
         }                                                         \
     } while (0)

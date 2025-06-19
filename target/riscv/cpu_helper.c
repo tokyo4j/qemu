@@ -1624,6 +1624,8 @@ static void raise_mmu_exception(CPURISCVState *env, target_ulong address,
     case MMU_INST_FETCH:
         if (pmp_violation) {
             cs->exception_index = RISCV_EXCP_INST_ACCESS_FAULT;
+        } else if (env->pse.pending) {
+            cs->exception_index = RISCV_EXCP_INST_SUCCESS;
         } else if (env->virt_enabled && !first_stage) {
             cs->exception_index = RISCV_EXCP_INST_GUEST_PAGE_FAULT;
         } else {
@@ -1633,6 +1635,8 @@ static void raise_mmu_exception(CPURISCVState *env, target_ulong address,
     case MMU_DATA_LOAD:
         if (pmp_violation) {
             cs->exception_index = RISCV_EXCP_LOAD_ACCESS_FAULT;
+        } else if (env->pse.pending) {
+            cs->exception_index = RISCV_EXCP_LOAD_SUCCESS;
         } else if (two_stage && !first_stage) {
             cs->exception_index = RISCV_EXCP_LOAD_GUEST_ACCESS_FAULT;
         } else {
@@ -1642,6 +1646,8 @@ static void raise_mmu_exception(CPURISCVState *env, target_ulong address,
     case MMU_DATA_STORE:
         if (pmp_violation) {
             cs->exception_index = RISCV_EXCP_STORE_AMO_ACCESS_FAULT;
+        } else if (env->pse.pending) {
+            cs->exception_index = RISCV_EXCP_STORE_SUCCESS;
         } else if (two_stage && !first_stage) {
             cs->exception_index = RISCV_EXCP_STORE_GUEST_AMO_ACCESS_FAULT;
         } else {
@@ -1869,6 +1875,28 @@ bool riscv_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
 
     if (ret == TRANSLATE_PMP_FAIL) {
         pmp_violation = true;
+    }
+
+    if (env->priv < PRV_M && env->pse.enabled) {
+        if (env->pse.accepted && env->pse.mmu_idx == mmu_idx
+                && env->pse.prot == prot && env->pse.va == address && env->pse.pa == pa) {
+            qemu_log_mask(CPU_LOG_MMU, "[QEMU] accepting pse: pc=%lx, mmu_idx=%d,"
+                " prot=%d tlb_size=%lu, pa=%lx, va=%lx\n",
+                env->pc, mmu_idx, prot, tlb_size, pa, address);
+            env->pse.pending = false;
+        } else {
+            qemu_log_mask(CPU_LOG_MMU, "[QEMU] delegating pse: pc=%lx, mmu_idx=%d,"
+                " prot=%d tlb_size=%lu, pa=%lx, va=%lx\n",
+                env->pc, mmu_idx, prot, tlb_size, pa, address);
+            env->pse.pending = true;
+            env->pse.accepted = false;
+            env->pse.mmu_idx = mmu_idx;
+            env->pse.prot = prot;
+            env->pse.tlb_size = tlb_size;
+            env->pse.pa = pa;
+            env->pse.va = address;
+            ret = TRANSLATE_FAIL;
+        }
     }
 
     if (ret == TRANSLATE_SUCCESS) {
@@ -2183,6 +2211,9 @@ void riscv_cpu_do_interrupt(CPUState *cs)
     int sxlen = 0;
     int mxlen = 16 << riscv_cpu_mxl(env);
     bool nnmi_excep = false;
+    bool is_pse = cs->exception_index == RISCV_EXCP_INST_SUCCESS
+        || cs->exception_index == RISCV_EXCP_LOAD_SUCCESS
+        || cs->exception_index == RISCV_EXCP_STORE_SUCCESS;
 
     if (cpu->cfg.ext_smrnmi && env->rnmip && async) {
         riscv_do_nmi(env, cause | ((target_ulong)1U << (mxlen - 1)),
@@ -2254,6 +2285,10 @@ void riscv_cpu_do_interrupt(CPUState *cs)
         case RISCV_EXCP_SW_CHECK:
             tval = env->sw_check_code;
             break;
+        case RISCV_EXCP_INST_SUCCESS:
+        case RISCV_EXCP_LOAD_SUCCESS:
+        case RISCV_EXCP_STORE_SUCCESS:
+            tval = env->badaddr;
         default:
             break;
         }
@@ -2282,7 +2317,7 @@ void riscv_cpu_do_interrupt(CPUState *cs)
                   __func__, env->mhartid, async, cause, env->pc, tval,
                   riscv_cpu_get_trap_name(cause, async));
 
-    mode = env->priv <= PRV_S && cause < 64 &&
+    mode = env->priv <= PRV_S && cause < 64 && !is_pse &&
         (((deleg >> cause) & 1) || s_injected || vs_injected) ? PRV_S : PRV_M;
 
     vsmode_exc = env->virt_enabled && cause < 64 &&

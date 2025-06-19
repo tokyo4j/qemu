@@ -324,6 +324,9 @@ static const char * const riscv_excp_names[] = {
     "guest_load_page_fault",
     "reserved",
     "guest_store_page_fault",
+    "page_inst_fetch_success",
+    "page_load_success",
+    "page_store_success",
 };
 
 static const char * const riscv_intr_names[] = {
