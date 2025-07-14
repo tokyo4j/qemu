@@ -470,6 +470,7 @@ static bool granule_protection_check(CPUARMState *env, uint64_t paddress,
         if (pspace == (gpi & 3)) {
             return true;
         }
+        fprintf(stderr, "granule_protection_check() pspace=%x, gpi=%x pa=%lx\n", pspace, gpi, paddress);
         break;
     default:
         goto fault_walk; /* reserved */
@@ -3532,6 +3533,7 @@ static bool get_phys_addr_gpc(CPUARMState *env, S1Translate *ptw,
     if (!granule_protection_check(env, result->f.phys_addr,
                                   result->f.attrs.space, fi)) {
         fi->type = ARMFault_GPCFOnOutput;
+        fprintf(stderr, "granule_protection_check() returned false\n");
         return true;
     }
     return false;
