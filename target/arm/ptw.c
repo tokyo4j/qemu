@@ -3382,6 +3382,8 @@ static bool get_phys_addr_twostage(CPUARMState *env, S1Translate *ptw,
     return false;
 }
 
+static uint64_t last_s1_vaddr, last_s2_vaddr;
+
 static bool get_phys_addr_nogpc(CPUARMState *env, S1Translate *ptw,
                                       vaddr address,
                                       MMUAccessType access_type, MemOp memop,
@@ -3417,6 +3419,7 @@ static bool get_phys_addr_nogpc(CPUARMState *env, S1Translate *ptw,
          */
         ptw->in_ptw_idx = (ptw->in_space == ARMSS_Secure) ?
             ARMMMUIdx_Stage2_S : ARMMMUIdx_Stage2;
+        last_s1_vaddr = address;
         break;
 
     case ARMMMUIdx_Stage2:
@@ -3427,6 +3430,7 @@ static bool get_phys_addr_nogpc(CPUARMState *env, S1Translate *ptw,
          * the Secure EL2&0 regime.
          */
         ptw->in_ptw_idx = ptw_idx_for_stage_2(env, mmu_idx);
+        last_s2_vaddr = address;
         break;
 
     case ARMMMUIdx_E10_0:
@@ -3533,7 +3537,8 @@ static bool get_phys_addr_gpc(CPUARMState *env, S1Translate *ptw,
     if (!granule_protection_check(env, result->f.phys_addr,
                                   result->f.attrs.space, fi)) {
         fi->type = ARMFault_GPCFOnOutput;
-        fprintf(stderr, "granule_protection_check() returned false\n");
+        fprintf(stderr, "granule_protection_check() returned false. "
+            "vaddr=%lx, last_s1_vaddr=%lx, last_s2_vaddr=%lx \n", address, last_s1_vaddr, last_s2_vaddr);
         return true;
     }
     return false;
