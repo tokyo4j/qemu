@@ -1056,7 +1056,7 @@ void riscv_cpu_set_mode(CPURISCVState *env, target_ulong newpriv, bool virt_en)
 
     if (riscv_has_ext(env, RVH)) {
         /* Flush the TLB on all virt mode changes. */
-        if (env->virt_enabled != virt_en) {
+        if (env->virt_enabled != virt_en && !env->pse.pending) {
             tlb_flush(env_cpu(env));
         }
 
